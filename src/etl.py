@@ -47,5 +47,5 @@ data = data[data['final_price_idr'] > 0]
 data.dropna(inplace=True) 
 
 # Save the data to a CSV file in your 'data/' folder for ETL loading
-data.to_csv('../data/simulated_logistics.csv', index=False)
+data.to_csv('data/simulated_logistics.csv', index=False)
 print("Data simulation and cleaning complete. Ready for SQL load on Day 4.")
