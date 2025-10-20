@@ -3,6 +3,7 @@ USE jakarta_logistics_db;
 
 -- Drop the table if it already exists to ensure a clean start
 DROP TABLE IF EXISTS logistics_transactions;
+TRUNCATE TABLE logistics_transactions;
 
 -- Create the main transaction table matching the CSV column names and data types
 

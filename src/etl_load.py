@@ -6,7 +6,6 @@ from pathlib import Path
 
 
 # --- Configuration ---
-# NOTE: Replace these with your actual database credentials
 DB_HOST = "localhost"
 DB_DATABASE = "jakarta_logistics_db"
 DB_USER = "root"
