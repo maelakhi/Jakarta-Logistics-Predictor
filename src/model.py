@@ -64,8 +64,6 @@ def prepare_data(df):
     )
     
     # --- CRITICAL INTERACTION FEATURES ---
-    # NOTE: distance_squared is calculated but not used in the final feature_list below
-    df['distance_squared'] = df['distance_from_center'] ** 2 
     
     df['demand_weekend_interaction'] = df['demand_volume'] * df['is_weekend']
     df['fuel_distance_cost'] = df['fuel_price_factor'] * df['distance_from_center']
@@ -75,7 +73,6 @@ def prepare_data(df):
     # -------------------------------------
 
     # 3. Define Features (X) and Target (y)
-    # REDUNDANT FEATURES REMOVED: 'distance_from_center', 'distance_squared'
     feature_list = [
         'demand_volume', 
         'fuel_price_factor', 

@@ -145,11 +145,13 @@ const formatPrice = (price) => {
 // Main App Component
 const App = () => {
   const [formData, setFormData] = useState({
-    // Combines latitude and longitude into one string field
+    // Keep a valid location example to calculate initial distance on load
     location_coords: "-6.1754, 106.8272", 
     delivery_date: new Date().toISOString().substring(0, 10),
-    demand_volume: 8.0,
-    fuel_price_factor: 1.15
+    // Set to empty string for visually empty field on load
+    demand_volume: "", 
+    // Set to empty string for visually empty field on load
+    fuel_price_factor: "" 
   });
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -173,11 +175,11 @@ const App = () => {
 
   // Handle input changes
   const handleChange = (e) => {
-    const { name, value, type } = e.target;
-    // Handle the location string or standard number/date inputs
+    const { name, value } = e.target;
+    // Store all inputs as raw strings. Numbers will be parsed at submission.
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'number' ? parseFloat(value) : value,
+      [name]: value,
     }));
   };
 
@@ -190,20 +192,24 @@ const App = () => {
 
     const { lat, lon } = parseCoords(formData.location_coords);
     
-    // Check coordinate validity before proceeding
-    if (!coordsValid || isNaN(lat) || isNaN(lon)) {
-        setError('Please fix the location format (Latitude, Longitude) before predicting.');
+    // Parse numerical inputs just before submission
+    const demand = parseFloat(formData.demand_volume);
+    const fuel = parseFloat(formData.fuel_price_factor);
+    
+    // Check all required inputs for validity
+    if (!coordsValid || isNaN(lat) || isNaN(lon) || isNaN(demand) || isNaN(fuel)) {
+        setError('Please fix the location format and ensure all numerical fields are filled and valid.');
         setLoading(false);
         return;
     }
 
     // Prepare payload for the Flask API
     const payload = {
-      pickup_latitude: lat, // Parsed from string
-      pickup_longitude: lon, // Parsed from string
+      pickup_latitude: lat,
+      pickup_longitude: lon,
       delivery_date: formData.delivery_date,
-      demand_volume: formData.demand_volume,
-      fuel_price_factor: formData.fuel_price_factor,
+      demand_volume: demand, // Use parsed number
+      fuel_price_factor: fuel, // Use parsed number
     };
 
     try {
@@ -302,6 +308,7 @@ const App = () => {
               step="0.1"
               min="1"
               max="10"
+              placeholder="e.g., 5.0"
               value={formData.demand_volume}
               onChange={handleChange}
               required
@@ -323,6 +330,7 @@ const App = () => {
               step="0.01"
               min="0.5"
               max="2.0"
+              placeholder="e.g., 1.0"
               value={formData.fuel_price_factor}
               onChange={handleChange}
               required
