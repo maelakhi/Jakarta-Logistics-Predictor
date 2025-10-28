@@ -1,10 +1,7 @@
-# 1. Base Image: Start from Python 3.10 slim
+# 1. Base Image: Force the use of Python 3.10
 FROM python:3.10-slim
 
-# 2. Add System Dependencies (NEW STEPS)
-# 'apt-get update' refreshes the list of packages.
-# 'build-essential' installs all the C/C++ tools needed to compile libraries like numpy/scikit-learn.
-# 'apt-get clean' removes temporary files to keep the final image small.
+# 2. Add System Dependencies
 RUN apt-get update && \
     apt-get install -y build-essential && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
