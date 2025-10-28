@@ -110,7 +110,7 @@ const styles = {
 
 const CENTER_LAT = -6.2088;
 const CENTER_LON = 106.8456;
-const API_URL = 'http://localhost:8080/predict';
+const API_URL = 'https://logistics-api-9ybs.onrender.com/predict';
 
 // Helper function to calculate Euclidean distance (in degrees)
 const calculateDistance = (lat1, lon1) => {
