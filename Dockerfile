@@ -6,24 +6,20 @@ RUN apt-get update && \
     apt-get install -y build-essential && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# 3. Set Working Directory for the build process
+# 3. Set Working Directory for the build process (standard location)
 WORKDIR /usr/src/app
 
-# 4. Dependencies: Copy the minimal requirements list from the root and install
+# 4. Dependencies: Copy requirements from root and install them
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. Application Code: Copy the 'src' folder (containing api.py/model.py) 
-#    into the container's final application directory (/app)
+# 5. Application Code: Copy the contents of the 'src' folder (api.py, model.py, etc.) 
+#    into the dedicated application directory (/app).
 COPY src /app
 
-# 6. CRITICAL PATH FIX: Add /app to the PYTHONPATH
-# This tells Python to search the /app directory for modules, resolving the ModuleNotFoundError.
-ENV PYTHONPATH=/app
-
-# 7. Port
+# 6. Port
 EXPOSE 8080
 
-# 8. Command: Run the application using Gunicorn.
-# The command is clean because the PYTHONPATH handles the discovery.
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "api:app"]
+# 7. CRITICAL FIX: Use 'sh -c' to guarantee the PYTHONPATH is set 
+#    and applied for the Gunicorn command.
+CMD ["sh", "-c", "PYTHONPATH=/app gunicorn --bind 0.0.0.0:8080 api:app"]
