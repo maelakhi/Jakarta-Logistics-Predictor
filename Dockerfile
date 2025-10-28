@@ -1,5 +1,5 @@
-# 1. Base Image: Force the use of Python 3.10 to ensure compatibility with ML packages
-FROM python:3.10-slim
+# 1. Base Image: Use the full Python 3.10 image for best compatibility
+FROM python:3.10
 
 # 2. Add System Dependencies: Essential tools for compiling NumPy/scikit-learn
 RUN apt-get update && \
@@ -9,17 +9,15 @@ RUN apt-get update && \
 # 3. Working Directory
 WORKDIR /app
 
-# 4. Dependencies: Copy requirements from root and install them
+# 4. Dependencies: Copy the minimal requirements list from the root and install
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. Application Code: Copy the 'src' folder (which contains api.py/model.py) 
-#    into the container's working directory (/app)
+# 5. Application Code: Copy the 'src' folder (containing api.py/model.py) into the container
 COPY src /app
 
 # 6. Port
 EXPOSE 8080
 
 # 7. Command: Run the application using Gunicorn.
-#    Since api.py is now inside /app, Gunicorn runs it successfully.
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "api:app"]
