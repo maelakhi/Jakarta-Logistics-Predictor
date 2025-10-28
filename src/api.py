@@ -5,9 +5,21 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pandas as pd
 import datetime
+import os # <--- ADDED: Import os for path checking
 
-# --- Configuration ---
-MODEL_FILE = 'src/best_logistics_model.pkl'
+# --- Configuration: Adaptive Model Path ---
+MODEL_FILENAME = 'best_logistics_model.pkl'
+
+# This logic checks if the file exists in the current directory (Docker) 
+# or in the 'src/' subdirectory (Local Run).
+if os.path.exists(MODEL_FILENAME):
+    MODEL_PATH = MODEL_FILENAME
+elif os.path.exists(os.path.join('src', MODEL_FILENAME)):
+    MODEL_PATH = os.path.join('src', MODEL_FILENAME)
+else:
+    # Default to the most likely local path for clear error messages if missing
+    MODEL_PATH = os.path.join('src', MODEL_FILENAME) 
+# ------------------------------------------
 
 # Coordinates of a central point in Jakarta for distance calculation (e.g., Central Jakarta)
 CENTER_LAT = -6.2088 
@@ -19,10 +31,13 @@ CORS(app)
 
 # --- Model and Feature Engineering Loader ---
 try:
-    model = joblib.load(MODEL_FILE)
-    print(f"[STATUS] Model loaded successfully from {MODEL_FILE}")
+    # Use the dynamically determined path
+    model = joblib.load(MODEL_PATH)
+    # Changed log to reflect the path used
+    print(f"[STATUS] Model loaded successfully from {MODEL_PATH}") 
 except Exception as e:
-    print(f"[ERROR] Could not load model: {e}")
+    # Changed log to reflect the path that failed
+    print(f"[ERROR] Could not load model using determined path '{MODEL_PATH}': {e}") 
     model = None
 
 def calculate_features(data):
@@ -74,7 +89,8 @@ def predict_price():
     """Endpoint to receive logistics data and return a price prediction."""
     
     if model is None:
-        return jsonify({"error": "Model not loaded. Check server logs."}), 500
+        # Include the path in the error message for easy debugging
+        return jsonify({"error": f"Model not loaded. Check server logs. Last path checked: {MODEL_PATH}"}), 500
 
     try:
         raw_data = request.json
@@ -109,6 +125,7 @@ def status():
     return jsonify({
         "status": "Logistics Prediction API is running",
         "model_loaded": model is not None,
+        "model_path_checked": MODEL_PATH, # Added for debugging confirmation
         "next_step": "Send POST request to /predict"
     })
 
