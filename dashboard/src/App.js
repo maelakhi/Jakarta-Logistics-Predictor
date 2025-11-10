@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Truck, DollarSign, MapPin, Calendar, Droplets, Send, Target } from 'lucide-react';
+import { Truck, MapPin, Calendar, Droplets, Send, Target } from 'lucide-react';
 
 // --- Styling Constants (Pure JavaScript Objects) ---
 const styles = {
