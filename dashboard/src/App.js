@@ -116,8 +116,8 @@ const styles = {
 };
 
 // **PENTING: Ganti dengan URL Render API Anda!**
-//const API_URL = 'https://logistics-api-9ybs.onrender.com/predict';
-const API_URL = 'http://127.0.0.1:8080/predict';
+const API_URL = 'https://logistics-api-9ybs.onrender.com/predict';
+//const API_URL = 'http://127.0.0.1:8080/predict';
 // Helper function to parse Lat, Lon string input
 const parseCoords = (coordsString) => {
   const parts = coordsString.split(',').map(s => s.trim());
