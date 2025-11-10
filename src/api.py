@@ -40,6 +40,18 @@ except Exception as e:
     print(f"[ERROR] Could not load model using determined path '{MODEL_PATH}': {e}") 
     model = None
 
+def haversine(lat1, lon1, lat2, lon2):
+    """Calculate the great-circle distance (in km) between two points on the Earth."""
+    R = 6371  # Earth radius in kilometers
+    lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
+    distance_km = R * c
+    return distance_km
+
+
 def calculate_features(data):
     """
     Replicates the exact feature engineering steps from model_trainer.py 
@@ -50,24 +62,24 @@ def calculate_features(data):
     
     # --- 1. Base Feature Engineering ---
     df['delivery_date'] = pd.to_datetime(df['delivery_date'])
-    df['day_of_week'] = df['delivery_date'].dt.dayofweek
-    df['is_weekend'] = df['day_of_week'].apply(lambda x: 1 if x >= 5 else 0)
-
-    # Euclidean distance from the center point (Needed for fuel_distance_cost)
-    df['distance_from_center'] = np.sqrt(
-        (df['pickup_latitude'] - CENTER_LAT)**2 + 
-        (df['pickup_longitude'] - CENTER_LON)**2
+    df['distance_km'] = haversine(
+        df['pickup_latitude'], df['pickup_longitude'],
+        df['dropoff_latitude'], df['dropoff_longitude']
     )
 
-    # --- 2. Structural and Polynomial Interaction Features (CRITICAL) ---
-    df['distance_squared'] = df['distance_from_center'] ** 2
-    
+    # Euclidean distance from the center point (Needed for fuel_distance_cost)
+    df['hour'] = df['delivery_date'].dt.hour
+    morning_peak = (df['hour'] >= 7) & (df['hour'] <= 9)
+    evening_peak = (df['hour'] >= 17) & (df['hour'] <= 19)
+    df['traffic_peak_factor'] = np.where(morning_peak | evening_peak, 1.5, 1.0)
+    df['is_weekend'] = df['delivery_date'].dt.dayofweek.apply(lambda x: 1 if x >= 5 else 0)
+
+    # --- 2. Structural and Polynomial Interaction Features (CRITICAL) ---    
     df['demand_weekend_interaction'] = df['demand_volume'] * df['is_weekend']
-    # NOTE: fuel_distance_cost IS KEPT because it was highly important
-    df['fuel_distance_cost'] = df['fuel_price_factor'] * df['distance_from_center'] 
+    df['fuel_distance_cost'] = df['fuel_price_factor'] * df['distance_km']
+    df['demand_traffic_interaction'] = df['demand_volume'] * df['traffic_peak_factor']    
     df['fuel_demand_interaction'] = df['fuel_price_factor'] * df['demand_volume']
     df['fuel_weekend_interaction'] = df['fuel_price_factor'] * df['is_weekend']
-    df['fuel_latitude_interaction'] = df['fuel_price_factor'] * df['pickup_latitude']
     
     # --- 3. Final Feature Selection (Order must match the training set) ---
     # REDUNDANT FEATURES REMOVED: 'distance_from_center', 'distance_squared'
@@ -75,11 +87,13 @@ def calculate_features(data):
         'demand_volume', 
         'fuel_price_factor', 
         'is_weekend',
+        'distance_km',              # NEW KEY FEATURE
+        'traffic_peak_factor',      # NEW KEY FEATURE
         'demand_weekend_interaction', 
-        'fuel_distance_cost', 
+        'fuel_distance_cost',       # UPDATED to use Haversine
+        'demand_traffic_interaction', # NEW POWERFUL INTERACTION
         'fuel_demand_interaction', 
         'fuel_weekend_interaction',
-        'fuel_latitude_interaction'
     ]
     
     return df[feature_list]

@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Truck, DollarSign, MapPin, Calendar, Droplets } from 'lucide-react';
+import React, { useState } from 'react';
+import { Truck, DollarSign, MapPin, Calendar, Droplets, Send, Target } from 'lucide-react';
 
 // --- Styling Constants (Pure JavaScript Objects) ---
 const styles = {
   container: {
-    padding: '2rem',
+    padding: '1rem',
     backgroundColor: '#f8f8f8',
     minHeight: '100vh',
     display: 'flex',
@@ -17,7 +17,7 @@ const styles = {
     borderRadius: '1rem',
     boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
     padding: '2.5rem',
-    maxWidth: '500px',
+    maxWidth: '550px',
     width: '100%',
     display: 'flex',
     flexDirection: 'column',
@@ -36,10 +36,21 @@ const styles = {
     flexDirection: 'column',
     gap: '0.3rem',
   },
+  locationGroup: {
+    display: 'flex',
+    gap: '1rem',
+    flexWrap: 'wrap',
+  },
+  locationInput: {
+    flex: '1 1 calc(50% - 0.5rem)', // Make them stack nicely on mobile
+    minWidth: '200px',
+  },
   label: {
     fontSize: '0.875rem',
     fontWeight: 500,
     color: '#374151',
+    display: 'flex',
+    alignItems: 'center',
   },
   inputWrapper: {
     display: 'flex',
@@ -58,6 +69,7 @@ const styles = {
     color: '#1f2937',
     padding: 0,
     marginLeft: '0.5rem',
+    width: '100%', // Ensure input uses full width of its wrapper
   },
   button: {
     padding: '0.75rem 1.5rem',
@@ -96,11 +108,6 @@ const styles = {
     marginTop: '0.5rem',
     fontWeight: 500,
   },
-  distanceText: {
-    fontSize: '0.8rem',
-    color: '#6b7280',
-    marginTop: '0.5rem',
-  },
   loading: {
     textAlign: 'center',
     color: '#4f46e5',
@@ -108,29 +115,20 @@ const styles = {
   }
 };
 
-const CENTER_LAT = -6.2088;
-const CENTER_LON = 106.8456;
-const API_URL = 'https://logistics-api-9ybs.onrender.com/predict';
-
-// Helper function to calculate Euclidean distance (in degrees)
-const calculateDistance = (lat1, lon1) => {
-  if (isNaN(lat1) || isNaN(lon1)) return NaN;
-  return Math.sqrt(
-    Math.pow(lat1 - CENTER_LAT, 2) + Math.pow(lon1 - CENTER_LON, 2)
-  );
-};
-
+// **PENTING: Ganti dengan URL Render API Anda!**
+//const API_URL = 'https://logistics-api-9ybs.onrender.com/predict';
+const API_URL = 'http://127.0.0.1:8080/predict';
 // Helper function to parse Lat, Lon string input
 const parseCoords = (coordsString) => {
   const parts = coordsString.split(',').map(s => s.trim());
   if (parts.length === 2) {
     const lat = parseFloat(parts[0]);
     const lon = parseFloat(parts[1]);
-    if (!isNaN(lat) && !isNaN(lon)) {
-      return { lat, lon };
+    if (!isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+      return { lat, lon, valid: true };
     }
   }
-  return { lat: NaN, lon: NaN }; 
+  return { lat: NaN, lon: NaN, valid: false }; 
 };
 
 // Helper function to format currency
@@ -145,42 +143,40 @@ const formatPrice = (price) => {
 // Main App Component
 const App = () => {
   const [formData, setFormData] = useState({
-    // Keep a valid location example to calculate initial distance on load
-    location_coords: "-6.1754, 106.8272", 
+    // Initial values for 4 coordinates
+    pickup_coords: "-6.1754, 106.8272", 
+    dropoff_coords: "-6.2088, 106.8456", 
     delivery_date: new Date().toISOString().substring(0, 10),
-    // Set to empty string for visually empty field on load
-    demand_volume: "", 
-    // Set to empty string for visually empty field on load
-    fuel_price_factor: "" 
+    demand_volume: "5.0", 
+    fuel_price_factor: "1.0",
   });
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [distance, setDistance] = useState(0);
-  const [coordsValid, setCoordsValid] = useState(true);
+  const [validation, setValidation] = useState({
+    pickup_valid: true,
+    dropoff_valid: true,
+    numerical_valid: true
+  });
 
-  // Calculate distance whenever the coordinate string changes
-  useEffect(() => {
-    const { lat, lon } = parseCoords(formData.location_coords);
-    if (!isNaN(lat) && !isNaN(lon)) {
-      const dist = calculateDistance(lat, lon);
-      setDistance(dist.toFixed(4));
-      setCoordsValid(true);
-      setError(null);
-    } else {
-      setDistance('Invalid format');
-      setCoordsValid(false);
-    }
-  }, [formData.location_coords]);
+  // Calculate overall validity (Checks coordinates validity immediately)
+  const isFormValid = validation.pickup_valid && validation.dropoff_valid && validation.numerical_valid;
 
-  // Handle input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
-    // Store all inputs as raw strings. Numbers will be parsed at submission.
     setFormData(prev => ({
       ...prev,
       [name]: value,
     }));
+    
+    // Immediate validation for coordinates
+    if (name === 'pickup_coords' || name === 'dropoff_coords') {
+        const { valid } = parseCoords(value);
+        setValidation(prev => ({
+            ...prev,
+            [name === 'pickup_coords' ? 'pickup_valid' : 'dropoff_valid']: valid
+        }));
+    }
   };
 
   // Handle form submission and API call
@@ -190,50 +186,65 @@ const App = () => {
     setError(null);
     setLoading(true);
 
-    const { lat, lon } = parseCoords(formData.location_coords);
+    const pickup = parseCoords(formData.pickup_coords);
+    const dropoff = parseCoords(formData.dropoff_coords);
     
-    // Parse numerical inputs just before submission
+    // Numerical validation check
     const demand = parseFloat(formData.demand_volume);
     const fuel = parseFloat(formData.fuel_price_factor);
-    
-    // Check all required inputs for validity
-    if (!coordsValid || isNaN(lat) || isNaN(lon) || isNaN(demand) || isNaN(fuel)) {
-        setError('Please fix the location format and ensure all numerical fields are filled and valid.');
+    const numValid = !isNaN(demand) && !isNaN(fuel);
+
+    setValidation({
+        pickup_valid: pickup.valid,
+        dropoff_valid: dropoff.valid,
+        numerical_valid: numValid
+    });
+
+    if (!pickup.valid || !dropoff.valid || !numValid) {
+        setError('Mohon perbaiki format lokasi (Lat, Lon) dan pastikan semua angka terisi.');
         setLoading(false);
         return;
     }
 
-    // Prepare payload for the Flask API
+    // Prepare payload for the API (must match your Flask/Render API structure)
     const payload = {
-      pickup_latitude: lat,
-      pickup_longitude: lon,
+      pickup_latitude: pickup.lat,
+      pickup_longitude: pickup.lon,
+      dropoff_latitude: dropoff.lat, // NEW
+      dropoff_longitude: dropoff.lon, // NEW
       delivery_date: formData.delivery_date,
-      demand_volume: demand, // Use parsed number
-      fuel_price_factor: fuel, // Use parsed number
+      demand_volume: demand, 
+      fuel_price_factor: fuel, 
     };
+    
+    console.log("Sending payload:", payload);
 
     try {
       const response = await fetch(API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+            'Content-Type': 'application/json',
+            // Render/Vercel often requires CORS headers for cross-origin requests
+        },
         body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error(`API returned status ${response.status}. Is the Python server running on port 8080?`);
+        const errorText = await response.text();
+        throw new Error(`API returned status ${response.status}. Response: ${errorText.substring(0, 100)}...`);
       }
 
       const data = await response.json();
 
-      if (data.predicted_price) {
+      if (data.predicted_price !== undefined) {
         setPrediction(data.predicted_price);
       } else {
-        setError("Prediction failed. Check API response structure.");
+        setError("Prediksi gagal. Respon dari API tidak mengandung 'predicted_price'.");
       }
 
     } catch (err) {
       console.error("API Error:", err);
-      setError(`Failed to connect to the prediction API. Ensure 'python src/api.py' is running on port 8080.`);
+      setError(`Gagal terhubung ke API prediksi. Pastikan API di Render sudah di-deploy dan berjalan. Error: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -243,50 +254,76 @@ const App = () => {
     <div style={styles.container}>
       <form onSubmit={handleSubmit} style={styles.card}>
         <div style={styles.title}>
+          <Truck size={24} style={{ display: 'inline', marginRight: '10px', verticalAlign: 'middle' }} />
           JABODETABEK Logistics Cost Predictor
         </div>
 
-        {/* Pickup Location (Combined Lat/Lon) */}
-        <div style={styles.inputGroup}>
-          <label 
-            style={{...styles.label, color: coordsValid ? '#374151' : '#ef4444'}} 
-            htmlFor="location_coords"
-          >
-            <MapPin size={14} style={{ display: 'inline', marginRight: '5px' }} /> 
-            Pickup Location (Latitude, Longitude)
-          </label>
-          <div style={{...styles.inputWrapper, borderColor: coordsValid ? '#d1d5db' : '#ef4444'}}>
-            <input
-              id="location_coords"
-              name="location_coords"
-              type="text"
-              placeholder="-6.1754, 106.8272"
-              value={formData.location_coords}
-              onChange={handleChange}
-              required
-              style={styles.input}
-            />
-          </div>
-          <div style={{...styles.distanceText, color: coordsValid ? '#6b7280' : '#ef4444'}}>
-            Distance from Center (degrees): {distance}
-          </div>
-          {!coordsValid && (
-              <div style={styles.error}>
-                  Format must be: -6.1754, 106.8272
+        <p style={{ fontSize: '0.9rem', color: '#6b7280', marginTop: '-0.5rem' }}>
+            Masukkan lokasi, tanggal, dan faktor biaya untuk memprediksi harga pengiriman.
+        </p>
+
+        {/* Location Group */}
+        <div style={styles.locationGroup}>
+            {/* Pickup Location */}
+            <div style={{...styles.inputGroup, ...styles.locationInput}}>
+              <label 
+                style={{...styles.label, color: validation.pickup_valid ? '#374151' : '#ef4444'}} 
+                htmlFor="pickup_coords"
+              >
+                <MapPin size={14} style={{ marginRight: '5px' }} /> 
+                Lokasi Jemput (Lat, Lon)
+              </label>
+              <div style={{...styles.inputWrapper, borderColor: validation.pickup_valid ? '#d1d5db' : '#ef4444'}}>
+                <input
+                  id="pickup_coords"
+                  name="pickup_coords"
+                  type="text"
+                  placeholder="Contoh: -6.1754, 106.8272"
+                  value={formData.pickup_coords}
+                  onChange={handleChange}
+                  required
+                  style={styles.input}
+                />
               </div>
-          )}
+            </div>
+
+            {/* Dropoff Location */}
+            <div style={{...styles.inputGroup, ...styles.locationInput}}>
+              <label 
+                style={{...styles.label, color: validation.dropoff_valid ? '#374151' : '#ef4444'}} 
+                htmlFor="dropoff_coords"
+              >
+                <Target size={14} style={{ marginRight: '5px' }} /> 
+                Lokasi Antar (Lat, Lon)
+              </label>
+              <div style={{...styles.inputWrapper, borderColor: validation.dropoff_valid ? '#d1d5db' : '#ef4444'}}>
+                <input
+                  id="dropoff_coords"
+                  name="dropoff_coords"
+                  type="text"
+                  placeholder="Contoh: -6.2088, 106.8456"
+                  value={formData.dropoff_coords}
+                  onChange={handleChange}
+                  required
+                  style={styles.input}
+                />
+              </div>
+            </div>
         </div>
+
+        {/* Non-Location Inputs */}
         
-        {/* Delivery Date */}
+        {/* Delivery Date (Used for Traffic/Weekend) */}
         <div style={styles.inputGroup}>
           <label style={styles.label} htmlFor="delivery_date">
-            <Calendar size={14} style={{ display: 'inline', marginRight: '5px' }} /> Delivery Date (Used to determine Weekend Surcharge)
+            <Calendar size={14} style={{ marginRight: '5px' }} /> Waktu Pengiriman (Menentukan Traffic & Weekend)
           </label>
           <div style={styles.inputWrapper}>
+            {/* Using type datetime-local to capture both date and time */}
             <input
               id="delivery_date"
               name="delivery_date"
-              type="date"
+              type="datetime-local"
               value={formData.delivery_date}
               onChange={handleChange}
               required
@@ -298,7 +335,7 @@ const App = () => {
         {/* Demand Volume */}
         <div style={styles.inputGroup}>
           <label style={styles.label} htmlFor="demand_volume">
-            <Truck size={14} style={{ display: 'inline', marginRight: '5px' }} /> Demand Volume (1-10 scale)
+            <Truck size={14} style={{ marginRight: '5px' }} /> Demand Volume (Skala 1 - 10, mencerminkan seberapa sibuk/penting pengiriman ini)
           </label>
           <div style={styles.inputWrapper}>
             <input
@@ -308,7 +345,7 @@ const App = () => {
               step="0.1"
               min="1"
               max="10"
-              placeholder="e.g., 5.0"
+              placeholder="Contoh: 5.0"
               value={formData.demand_volume}
               onChange={handleChange}
               required
@@ -320,7 +357,7 @@ const App = () => {
         {/* Fuel Price Factor */}
         <div style={styles.inputGroup}>
           <label style={styles.label} htmlFor="fuel_price_factor">
-            <Droplets size={14} style={{ display: 'inline', marginRight: '5px' }} /> Fuel Price Factor (Base 1.0)
+            <Droplets size={14} style={{ marginRight: '5px' }} /> Fuel Price Factor (Basis 1.0, mencerminkan kenaikan harga bahan bakar)
           </label>
           <div style={styles.inputWrapper}>
             <input
@@ -330,7 +367,7 @@ const App = () => {
               step="0.01"
               min="0.5"
               max="2.0"
-              placeholder="e.g., 1.0"
+              placeholder="Contoh: 1.0"
               value={formData.fuel_price_factor}
               onChange={handleChange}
               required
@@ -344,11 +381,12 @@ const App = () => {
           type="submit"
           style={{
             ...styles.button,
-            ...(loading || !coordsValid ? { opacity: 0.7, cursor: 'not-allowed' } : {}),
+            ...(loading || !isFormValid ? { opacity: 0.7, cursor: 'not-allowed' } : {}),
           }}
-          disabled={loading || !coordsValid}
+          disabled={loading || !isFormValid}
         >
-          {loading ? 'Predicting...' : 'Predict Final Price'}
+          <Send size={16} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'text-bottom' }} />
+          {loading ? 'Memprediksi Biaya...' : 'Prediksi Harga Akhir'}
         </button>
 
         {/* Prediction Output / Error */}
@@ -360,7 +398,7 @@ const App = () => {
               </p>
             ) : (
               <>
-                <p style={styles.outputLabel}>Predicted Final Price (IDR)</p>
+                <p style={styles.outputLabel}>Harga Akhir Terprediksi (IDR)</p>
                 <p style={styles.outputPrice}>
                   {formatPrice(prediction)}
                 </p>

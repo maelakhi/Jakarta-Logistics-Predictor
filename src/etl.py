@@ -2,104 +2,116 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-# 1. Define the number of data points
+# --- Configuration ---
 NUM_RECORDS = 10000
+START_DATE = datetime(2024, 10, 1)
 
-# 2. Generate Random/Sequential Data
+# --- Utility Function: Calculate Haversine Distance (simplified for numpy) ---
+# This function is used to create a strong, realistic signal in the final price calculation.
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371  # Earth radius in kilometers
+    lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
+    distance_km = R * c
+    return distance_km
 
-# --- CORRECTED CODE FOR DATES ---
-start_date = datetime(2024, 10, 1) # Start date for simulation
-dates = pd.date_range(start=start_date, periods=NUM_RECORDS, freq='H')
-# ---------------------------------
+# 1. Generate Random/Sequential Data
+dates = pd.date_range(start=START_DATE, periods=NUM_RECORDS, freq='H')
 
 # Simulate Geo-Location in the Greater Jakarta area (approximate ranges)
-latitudes = np.random.uniform(-6.3, -6.1, NUM_RECORDS)
-longitudes = np.random.uniform(106.7, 107.0, NUM_RECORDS)
+# NOTE: The ranges for pickup and dropoff are kept the same to simulate delivery within the area.
+pickup_latitudes = np.random.uniform(-6.3, -6.1, NUM_RECORDS)
+pickup_longitudes = np.random.uniform(106.7, 107.0, NUM_RECORDS)
+dropoff_latitudes = np.random.uniform(-6.3, -6.1, NUM_RECORDS)
+dropoff_longitudes = np.random.uniform(106.7, 107.0, NUM_RECORDS)
 
 # Simulate Demand
 demand = np.random.randint(50, 500, NUM_RECORDS)
-# Simulate higher demand on a weekend day (multiplying every 7th record by 1.5)
-demand[::7] = (demand[::7] * 1.5).astype(int)
+demand[::7] = (demand[::7] * 1.5).astype(int) # Simulate higher demand on a periodic basis
 
 # Simulate Fuel Price Factor 
 fuel_factor = 1.0 + (np.random.rand(NUM_RECORDS) * 0.1)
 
-# 3. Assemble the INITIAL DataFrame to create helper columns
-# We must assemble the DataFrame first to use its properties (like dayofweek)
+# 2. Assemble the INITIAL DataFrame
 data = pd.DataFrame({
     'transaction_id': range(1, NUM_RECORDS + 1),
     'delivery_date': dates,
-    'pickup_latitude': latitudes,
-    'pickup_longitude': longitudes,
+    'pickup_latitude': pickup_latitudes,
+    'pickup_longitude': pickup_longitudes,
+    'dropoff_latitude': dropoff_latitudes, # NEW COLUMN
+    'dropoff_longitude': dropoff_longitudes, # NEW COLUMN
     'demand_volume': demand,
     'fuel_price_factor': fuel_factor
 })
 
 # --- NEW: Create Helper Features for Price Calculation ---
+data['hour'] = data['delivery_date'].dt.hour
 data['day_of_week'] = data['delivery_date'].dt.dayofweek
 data['is_weekend'] = data['day_of_week'].apply(lambda x: 1 if x >= 5 else 0) # 5=Sat, 6=Sun
+data['traffic_peak_factor'] = np.where(
+    ((data['hour'] >= 7) & (data['hour'] <= 9)) | ((data['hour'] >= 17) & (data['hour'] <= 19)), 
+    1.5, 
+    1.0
+)
+# Calculate the distance in kilometers
+data['distance_km'] = haversine(
+    data['pickup_latitude'], data['pickup_longitude'], 
+    data['dropoff_latitude'], data['dropoff_longitude']
+)
 # --------------------------------------------------------
 
 
-# 4. Create the Target Variable (Final Price) - INJECTING STRONG SIGNAL
-# The price is a function of multiple factors, ensuring a strong R^2 potential
+# 3. Create the Target Variable (Final Price) - INJECTING STRONG SIGNAL
 
-BASE_PRICE = 45000 # Minimum fixed cost
+BASE_PRICE = 45000 
+PRICE_PER_KM = 3500 # Strong correlation with distance
+DEMAND_PREMIUM_PER_UNIT = 85
+WEEKEND_SURCHARGE = 12000
 
-# A. Demand Influence: A strong, positive correlation
-demand_premium = data['demand_volume'] * 85 
+# A. Base Distance Cost
+distance_cost = data['distance_km'] * PRICE_PER_KM
 
-# B. Weekend Surcharge: Adds a flat fee for weekend delivery
-weekend_surcharge = data['is_weekend'] * 12000
+# B. Demand Influence
+demand_premium = data['demand_volume'] * DEMAND_PREMIUM_PER_UNIT 
 
-# C. Geo-Influence: Simulate a cost gradient (e.g., further from a central point -6.2, 106.8)
-# This uses latitude to simulate distance/difficulty.
-# Higher latitude values (closer to 0) are less expensive, lower (more negative) are more expensive.
-# Factor creates a range of about -15000 to +15000 based on location
-geo_influence = (data['pickup_latitude'] + 6.2) * 150000 
+# C. Time/Day Surcharge
+time_surcharge = (data['is_weekend'] * WEEKEND_SURCHARGE) + (data['traffic_peak_factor'] - 1.0) * 15000 
 
-# D. Fuel/Cost Multiplier: Multiplies the total cost
+# D. Fuel Multiplier
 fuel_multiplier = data['fuel_price_factor'] * 1.05
 
-# E. Final Calculation: Base cost + premiums, multiplied by the fuel factor, plus noise
-final_price = (BASE_PRICE + demand_premium + weekend_surcharge + geo_influence) * fuel_multiplier
+# E. Final Calculation: 
+final_price = (BASE_PRICE + distance_cost + demand_premium + time_surcharge) * fuel_multiplier
 # Add small, normally distributed noise for realism
 data['final_price_idr'] = final_price + np.random.normal(0, 500, NUM_RECORDS)
-# ----------------------------------------------------------------------------------
-
-# ----------------------------------------------------------------------
-# FEATURE ENGINEERING: Adding Traffic Stress Index
+# Ensure price is positive
+data['final_price_idr'] = np.maximum(data['final_price_idr'], 10000)
 # ----------------------------------------------------------------------
 
-# 1. Extract the hour from the delivery_date column
-# The 'dt.hour' accessor works because 'delivery_date' was created using pd.date_range
-data['hour'] = data['delivery_date'].dt.hour
 
-# 2. Define the conditions for peak traffic (e.g., 7-9 AM and 5-7 PM)
-# This simulates the real friction of Jakarta traffic
-morning_peak = (data['hour'] >= 7) & (data['hour'] <= 9)
-evening_peak = (data['hour'] >= 17) & (data['hour'] <= 19)
+# 4. Finalize the DataFrame for CSV Save
+# ONLY include raw data in the final CSV/SQL load. Derived features are dropped.
+columns_to_keep = [
+    'transaction_id', 
+    'delivery_date', 
+    'pickup_latitude', 
+    'pickup_longitude',
+    'dropoff_latitude', 
+    'dropoff_longitude', # NEW
+    'demand_volume', 
+    'fuel_price_factor', 
+    'final_price_idr'
+]
+data = data[columns_to_keep]
 
-# 3. Create the new feature column (traffic_peak_factor)
-# np.where assigns 1.5 (higher cost/friction) during peak times, and 1.0 otherwise.
-data['traffic_peak_factor'] = np.where(morning_peak | evening_peak, 1.5, 1.0)
-
-# 4. (Optional but recommended) Verify the new feature was created
-print("New Traffic Peak Feature Head:")
-print(data[['delivery_date', 'hour', 'traffic_peak_factor']].head(10))
-
-# 5. Drop the temporary 'hour' column (we don't need it in the final table)
-data.drop(columns=['hour'], inplace=True)
-
-
-# 5. Finalize the DataFrame (Drop temporary columns)
-# Drop the helper columns before saving the CSV, as the model will re-engineer them later.
-data = data.drop(columns=['day_of_week', 'is_weekend'])
-
-
-# 6. Data Cleaning and Save
-data = data[data['final_price_idr'] > 0] 
+# 5. Data Cleaning and Save
 data.dropna(inplace=True) 
 
 data.to_csv('data/logistic_data.csv', index=False)
 print("Data simulation and cleaning complete. Ready for SQL load.")
+print(f"Total records saved: {len(data)}")
+print("\n--- Columns in saved CSV ---")
+print(data.columns.tolist())
